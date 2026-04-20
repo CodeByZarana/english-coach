@@ -227,6 +227,10 @@ export default function Coach() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text }),
       });
+      if (res.status === 429) {
+        setError("You've hit the hourly limit (10 corrections). Come back in a bit.");
+        return;
+      }
       const data: CorrectionResult = await res.json();
       const id = newResultId();
       const timestamp = new Date();

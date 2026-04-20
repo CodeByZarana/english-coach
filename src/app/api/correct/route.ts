@@ -1,7 +1,15 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { Ratelimit } from "@upstash/ratelimit";
+import { Redis } from "@upstash/redis";
 import { NextRequest, NextResponse } from "next/server";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+const ratelimit = new Ratelimit({
+  redis: Redis.fromEnv(),
+  limiter: Ratelimit.slidingWindow(10, "1 h"),
+  analytics: true,
+});
 
 const SYSTEM_PROMPT = `You are an English confidence coach for non-native speakers — particularly professionals in tech. Your job is NOT to rewrite their sentences, but to identify the single most impactful correction that would make them sound more natural and confident.
 
@@ -23,6 +31,16 @@ Respond ONLY with valid JSON in this exact shape:
 
 export async function POST(req: NextRequest) {
   try {
+    const ip = req.headers.get("x-forwarded-for") ?? req.headers.get("x-real-ip") ?? "anonymous";
+    const { success, limit, remaining } = await ratelimit.limit(ip);
+
+    if (!success) {
+      return NextResponse.json(
+        { error: "Too many requests. Please try again in an hour." },
+        { status: 429, headers: { "X-RateLimit-Limit": limit.toString(), "X-RateLimit-Remaining": remaining.toString() } }
+      );
+    }
+
     const { text } = await req.json();
 
     if (!text || typeof text !== "string" || text.trim().length === 0) {
